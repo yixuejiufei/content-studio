@@ -9,3 +9,6 @@ __pycache__/
 apps/web/node_modules/
 apps/web/dist/
 apps/web/*.tsbuildinfo
+
+# Local SSH host verification helper; generated from GitHub's published key.
+.github-known_hosts
