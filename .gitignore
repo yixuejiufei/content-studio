@@ -1,0 +1,11 @@
+# Python runtime data
+server/content-studio.db
+server/content-media/
+server/.pytest-work/
+__pycache__/
+*.py[cod]
+
+# Frontend dependencies and build output
+apps/web/node_modules/
+apps/web/dist/
+apps/web/*.tsbuildinfo
