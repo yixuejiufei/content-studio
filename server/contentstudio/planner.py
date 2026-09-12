@@ -44,11 +44,16 @@ def draft_content_task(title: str, audience: str, platform: str, target_seconds:
         RenderDirective(id="focus-decision", type="focus.zoom", beat_id="decision", start_seconds=beats[3].start_seconds, end_seconds=min(beats[3].start_seconds + 5, beats[3].end_seconds), x=0.24, y=0.2, width=0.52, height=0.4),
         RenderDirective(id="highlight-decision", type="highlight.rect", beat_id="decision", start_seconds=beats[3].start_seconds, end_seconds=min(beats[3].start_seconds + 5, beats[3].end_seconds), text="工具选择与参数", x=0.3, y=0.25, width=0.42, height=0.28),
     ]
-    return ContentTask(task_id=f"content-{uuid.uuid4().hex[:10]}", title=title, audience=audience, platform=platform, target_seconds=target_seconds, voiceover_asset=_slot("voiceover", "完整旁白音频", "audio", "录制完整旁白，可分段录制。保留 0.5 秒前后空白；不要混入背景音乐。", target_seconds), beats=beats, render_directives=directives, created_at=now, updated_at=now)
+    directives.append(RenderDirective(id="duck-background-music", type="audio.duck", enabled=True, volume=0.18))
+    return ContentTask(task_id=f"content-{uuid.uuid4().hex[:10]}", title=title, audience=audience, platform=platform, target_seconds=target_seconds, voiceover_asset=_slot("voiceover", "完整旁白音频", "audio", "录制完整旁白，可分段录制。保留 0.5 秒前后空白；不要混入背景音乐。", target_seconds), music_asset=_slot("background-music", "背景音乐（可选）", "audio", "上传你拥有使用权的纯音乐；渲染器会在人声出现时自动压低音量。", target_seconds, required=False), beats=beats, render_directives=directives, created_at=now, updated_at=now)
 
 
 def all_slots(task: ContentTask) -> list[ContentAssetSlot]:
-    return [task.voiceover_asset, *(beat.asset for beat in task.beats)]
+    slots = [task.voiceover_asset]
+    if task.music_asset:
+        slots.append(task.music_asset)
+    slots.extend(beat.asset for beat in task.beats)
+    return slots
 
 
 def refresh_task_status(task: ContentTask) -> ContentTask:

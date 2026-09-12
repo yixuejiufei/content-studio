@@ -120,13 +120,29 @@ def render_rough_cut(
 
     voiceover_index = len(task.beats)
     command.extend(["-i", str(Path(task.voiceover_asset.stored_path).resolve())])
+    music_index: int | None = None
+    if task.music_asset and task.music_asset.stored_path:
+        music_path = Path(task.music_asset.stored_path).resolve()
+        if not music_path.is_file():
+            raise ValueError("背景音乐文件不存在")
+        music_index = voiceover_index + 1
+        command.extend(["-stream_loop", "-1", "-i", str(music_path)])
     concat_inputs = "".join(f"[v{index}]" for index in range(len(task.beats)))
     subtitle_style = "FontName=Microsoft YaHei,FontSize=30,PrimaryColour=&H00FFFFFF,OutlineColour=&H90000000,BorderStyle=1,Outline=2,Alignment=2,MarginV=60"
     filters = visual_filters + [
         f"{concat_inputs}concat=n={len(task.beats)}:v=1:a=0[visual]",
         f"[visual]subtitles=filename='{_filter_path(subtitles)}':force_style='{subtitle_style}'[captioned]",
-        f"[{voiceover_index}:a]aresample=48000,apad=pad_dur={task.target_seconds}[audio]",
     ]
+    if music_index is not None and _enabled_directives(task, "audio.duck"):
+        duck = _enabled_directives(task, "audio.duck")[0]
+        filters.extend([
+            f"[{voiceover_index}:a]aresample=48000,apad=pad_dur={task.target_seconds},asplit=2[voice-sidechain][voice-mix]",
+            f"[{music_index}:a]aresample=48000,atrim=duration={task.target_seconds},volume={duck.volume}[music]",
+            "[music][voice-sidechain]sidechaincompress=threshold=0.02:ratio=12:attack=20:release=500[ducked]",
+            "[ducked][voice-mix]amix=inputs=2:duration=first:normalize=0[audio]",
+        ])
+    else:
+        filters.append(f"[{voiceover_index}:a]aresample=48000,apad=pad_dur={task.target_seconds}[audio]")
     current_label = "captioned"
     effect_index = 0
     font_path = "C\\:/Windows/Fonts/msyh.ttc"

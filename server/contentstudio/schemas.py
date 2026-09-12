@@ -10,7 +10,7 @@ AssetStatus = Literal["ready", "missing", "uploaded"]
 TaskStatus = Literal["prepare_assets", "ready_for_assembly", "rough_cut_ready"]
 RenderProfile = Literal["preview_720p", "publish_1080p", "vertical_1080p"]
 RenderJobStatus = Literal["queued", "rendering", "completed", "failed", "cancelled"]
-RenderDirectiveType = Literal["card.show", "transition.fade", "focus.zoom", "highlight.rect"]
+RenderDirectiveType = Literal["card.show", "transition.fade", "focus.zoom", "highlight.rect", "audio.duck"]
 
 
 class ContentAssetSlot(BaseModel):
@@ -79,6 +79,7 @@ class RenderDirective(BaseModel):
     width: float = Field(default=0.5, gt=0, le=1)
     height: float = Field(default=0.3, gt=0, le=1)
     fade_seconds: float = Field(default=0.25, ge=0.05, le=2)
+    volume: float = Field(default=0.18, ge=0, le=1)
 
 
 class RenderJob(BaseModel):
@@ -107,6 +108,7 @@ class ContentTask(BaseModel):
     target_seconds: int = Field(default=90, ge=15, le=900)
     status: TaskStatus = "prepare_assets"
     voiceover_asset: ContentAssetSlot
+    music_asset: ContentAssetSlot | None = None
     beats: list[ContentBeat] = Field(min_length=1, max_length=32)
     render_directives: list[RenderDirective] = Field(default_factory=list, max_length=96)
     rough_cut: ContentRoughCut | None = None
@@ -128,5 +130,6 @@ class UpdateContentTaskRequest(BaseModel):
     platform: Platform
     target_seconds: int = Field(ge=15, le=900)
     voiceover_asset: ContentAssetSlot
+    music_asset: ContentAssetSlot | None = None
     beats: list[ContentBeat] = Field(min_length=1, max_length=32)
     render_directives: list[RenderDirective] = Field(default_factory=list, max_length=96)

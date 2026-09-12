@@ -106,7 +106,7 @@ def get_task(task_id: str) -> ContentTask:
 @app.put("/api/v1/content/tasks/{task_id}")
 def update_task(task_id: str, request: UpdateContentTaskRequest) -> ContentTask:
     current = require_task(task_id)
-    task = ContentTask(task_id=task_id, title=request.title.strip(), audience=request.audience.strip(), platform=request.platform, target_seconds=request.target_seconds, status=current.status, voiceover_asset=request.voiceover_asset, beats=request.beats, render_directives=request.render_directives, created_at=current.created_at, updated_at=current.updated_at)
+    task = ContentTask(task_id=task_id, title=request.title.strip(), audience=request.audience.strip(), platform=request.platform, target_seconds=request.target_seconds, status=current.status, voiceover_asset=request.voiceover_asset, music_asset=request.music_asset, beats=request.beats, render_directives=request.render_directives, created_at=current.created_at, updated_at=current.updated_at)
     refresh_task_status(task)
     store.save(task)
     return task
@@ -139,7 +139,11 @@ async def upload_asset(task_id: str, slot_id: str, request: Request) -> ContentT
 @app.get("/api/v1/content/tasks/{task_id}/assets/{slot_id}")
 def get_asset(task_id: str, slot_id: str) -> FileResponse:
     task = require_task(task_id)
-    slot = next((item for item in [task.voiceover_asset, *(beat.asset for beat in task.beats)] if item.id == slot_id), None)
+    slots = [task.voiceover_asset]
+    if task.music_asset:
+        slots.append(task.music_asset)
+    slots.extend(beat.asset for beat in task.beats)
+    slot = next((item for item in slots if item.id == slot_id), None)
     if slot is None or not slot.stored_path:
         raise HTTPException(status_code=404, detail="content asset not found")
     path = Path(slot.stored_path).resolve()

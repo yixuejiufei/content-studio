@@ -49,6 +49,9 @@ def test_export_generates_a_downloadable_mp4(tmp_path: Path) -> None:
         source = voice if asset["kind"] == "audio" else screen
         upload = client.post(f"/api/v1/content/tasks/{task['task_id']}/assets/{asset['id']}", content=source.read_bytes(), headers={"content-type": "audio/wav" if asset["kind"] == "audio" else "video/mp4", "x-file-name": source.name})
         assert upload.status_code == 200, upload.text
+    music = task["music_asset"]
+    upload = client.post(f"/api/v1/content/tasks/{task['task_id']}/assets/{music['id']}", content=voice.read_bytes(), headers={"content-type": "audio/wav", "x-file-name": "background.wav"})
+    assert upload.status_code == 200, upload.text
     created_job = client.post(f"/api/v1/content/tasks/{task['task_id']}/render-jobs", json={"profile": "preview_720p"})
     assert created_job.status_code == 202, created_job.text
     job = created_job.json()
