@@ -11,7 +11,7 @@ from threading import Event
 from pathlib import Path
 
 from .planner import all_slots
-from .schemas import ContentTask, ContentVideoExport, RenderProfile
+from .schemas import ContentTask, ContentVideoExport, RenderDirective, RenderProfile
 
 PROFILE_DIMENSIONS: dict[RenderProfile, tuple[int, int, int]] = {
     "preview_720p": (1280, 720, 30),
@@ -56,6 +56,18 @@ def _filter_path(path: Path) -> str:
     return path.resolve().as_posix().replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
 
 
+def _drawtext_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:").replace("%", "\\%").replace("\n", "\\n")
+
+
+def _color_for_ffmpeg(hex_color: str) -> str:
+    return "0x" + hex_color.removeprefix("#")
+
+
+def _enabled_directives(task: ContentTask, directive_type: str) -> list[RenderDirective]:
+    return [directive for directive in task.render_directives if directive.enabled and directive.type == directive_type]
+
+
 def render_rough_cut(
     task: ContentTask,
     media_root: Path,
@@ -84,6 +96,7 @@ def render_rough_cut(
 
     command = [imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-y"]
     visual_filters: list[str] = []
+    fades = {directive.beat_id: directive for directive in _enabled_directives(task, "transition.fade") if directive.beat_id}
     for index, beat in enumerate(task.beats):
         duration = round(beat.end_seconds - beat.start_seconds, 3)
         if beat.asset.stored_path:
@@ -94,24 +107,54 @@ def render_rough_cut(
         else:
             # The optional opening text card deliberately needs no uploaded file.
             command.extend(["-f", "lavfi", "-i", f"color=c=0x101827:s={width}x{height}:r={frame_rate}"])
+        fade = fades.get(beat.id)
+        fade_filter = ""
+        if fade:
+            fade_duration = min(fade.fade_seconds, max(0.05, duration / 2))
+            fade_filter = f",fade=t=in:st=0:d={fade_duration},fade=t=out:st={max(0, duration - fade_duration):.3f}:d={fade_duration}"
         visual_filters.append(
             f"[{index}:v]trim=duration={duration},setpts=PTS-STARTPTS,"
             f"fps={frame_rate},scale={width}:{height}:force_original_aspect_ratio=decrease,"
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=0x101827[v{index}]"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=0x101827{fade_filter}[v{index}]"
         )
 
     voiceover_index = len(task.beats)
     command.extend(["-i", str(Path(task.voiceover_asset.stored_path).resolve())])
     concat_inputs = "".join(f"[v{index}]" for index in range(len(task.beats)))
     subtitle_style = "FontName=Microsoft YaHei,FontSize=30,PrimaryColour=&H00FFFFFF,OutlineColour=&H90000000,BorderStyle=1,Outline=2,Alignment=2,MarginV=60"
-    filters = ";".join(visual_filters + [
+    filters = visual_filters + [
         f"{concat_inputs}concat=n={len(task.beats)}:v=1:a=0[visual]",
-        f"[visual]subtitles=filename='{_filter_path(subtitles)}':force_style='{subtitle_style}'[video]",
+        f"[visual]subtitles=filename='{_filter_path(subtitles)}':force_style='{subtitle_style}'[captioned]",
         f"[{voiceover_index}:a]aresample=48000,apad=pad_dur={task.target_seconds}[audio]",
-    ])
+    ]
+    current_label = "captioned"
+    effect_index = 0
+    font_path = "C\\:/Windows/Fonts/msyh.ttc"
+    for directive in _enabled_directives(task, "card.show"):
+        if directive.end_seconds <= directive.start_seconds or not directive.text:
+            continue
+        next_label = f"effect{effect_index}"
+        filters.append(
+            f"[{current_label}]drawtext=fontfile='{font_path}':text='{_drawtext_escape(directive.text)}':"
+            f"fontcolor=white:fontsize={max(36, round(height * 0.055))}:box=1:boxcolor=0x101827@0.88:boxborderw=40:"
+            f"x=(w-text_w)/2:y=(h-text_h)/2:enable='between(t,{directive.start_seconds},{directive.end_seconds})'[{next_label}]"
+        )
+        current_label = next_label
+        effect_index += 1
+    for directive in _enabled_directives(task, "highlight.rect"):
+        if directive.end_seconds <= directive.start_seconds:
+            continue
+        next_label = f"effect{effect_index}"
+        filters.append(
+            f"[{current_label}]drawbox=x=iw*{directive.x}:y=ih*{directive.y}:w=iw*{directive.width}:h=ih*{directive.height}:"
+            f"color={_color_for_ffmpeg(directive.color)}@0.95:t=5:enable='between(t,{directive.start_seconds},{directive.end_seconds})'[{next_label}]"
+        )
+        current_label = next_label
+        effect_index += 1
+    filters = ";".join(filters)
     command.extend([
         "-filter_complex", filters,
-        "-map", "[video]", "-map", "[audio]", "-t", str(task.target_seconds),
+        "-map", f"[{current_label}]", "-map", "[audio]", "-t", str(task.target_seconds),
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
         "-progress", "pipe:1", "-nostats", "-loglevel", "error", str(output),

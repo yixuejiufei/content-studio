@@ -10,6 +10,7 @@ AssetStatus = Literal["ready", "missing", "uploaded"]
 TaskStatus = Literal["prepare_assets", "ready_for_assembly", "rough_cut_ready"]
 RenderProfile = Literal["preview_720p", "publish_1080p", "vertical_1080p"]
 RenderJobStatus = Literal["queued", "rendering", "completed", "failed", "cancelled"]
+RenderDirectiveType = Literal["card.show", "transition.fade", "highlight.rect"]
 
 
 class ContentAssetSlot(BaseModel):
@@ -64,6 +65,22 @@ class ContentVideoExport(BaseModel):
     profile: RenderProfile = "publish_1080p"
 
 
+class RenderDirective(BaseModel):
+    id: str = Field(min_length=1, max_length=96)
+    type: RenderDirectiveType
+    enabled: bool = True
+    beat_id: str | None = None
+    start_seconds: float = Field(default=0, ge=0, le=3600)
+    end_seconds: float = Field(default=0, ge=0, le=3600)
+    text: str | None = Field(default=None, max_length=300)
+    color: str = Field(default="#facc15", pattern=r"^#[0-9A-Fa-f]{6}$")
+    x: float = Field(default=0.25, ge=0, le=1)
+    y: float = Field(default=0.25, ge=0, le=1)
+    width: float = Field(default=0.5, gt=0, le=1)
+    height: float = Field(default=0.3, gt=0, le=1)
+    fade_seconds: float = Field(default=0.25, ge=0.05, le=2)
+
+
 class RenderJob(BaseModel):
     job_id: str = Field(min_length=1, max_length=96)
     task_id: str = Field(min_length=1, max_length=96)
@@ -91,6 +108,7 @@ class ContentTask(BaseModel):
     status: TaskStatus = "prepare_assets"
     voiceover_asset: ContentAssetSlot
     beats: list[ContentBeat] = Field(min_length=1, max_length=32)
+    render_directives: list[RenderDirective] = Field(default_factory=list, max_length=96)
     rough_cut: ContentRoughCut | None = None
     video_export: ContentVideoExport | None = None
     created_at: float
@@ -111,3 +129,4 @@ class UpdateContentTaskRequest(BaseModel):
     target_seconds: int = Field(ge=15, le=900)
     voiceover_asset: ContentAssetSlot
     beats: list[ContentBeat] = Field(min_length=1, max_length=32)
+    render_directives: list[RenderDirective] = Field(default_factory=list, max_length=96)

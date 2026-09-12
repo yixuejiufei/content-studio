@@ -6,7 +6,7 @@ import time
 import uuid
 from pathlib import Path
 
-from .schemas import ContentAssetSlot, ContentBeat, ContentRoughCut, ContentTask, RoughCutItem
+from .schemas import ContentAssetSlot, ContentBeat, ContentRoughCut, ContentTask, RenderDirective, RoughCutItem
 
 
 def _slot(slot_id: str, label: str, kind: str, instruction: str, seconds: float, *, required: bool = True) -> ContentAssetSlot:
@@ -38,7 +38,12 @@ def draft_content_task(title: str, audience: str, platform: str, target_seconds:
         _beat("observation", "结果如何改变下一轮", "工具返回结果后，不会直接替它回答。结果会作为 Observation 写回下一轮上下文。", "展示工具返回值及 Observation 回到 Context 的边。", at(48), at(62), _slot("observation-screen", "工具与 Observation 录屏", "screen", "录制 calculator 返回结果，以及 Observation 回写 Context 的可视化。", at(14))),
         _beat("close", "最终输出与下一集", "我不只想展示成功。它算错、卡住、循环太多次，也应该被看见。接下来，我会继续公开构建这个让普通人看懂 Agent 的本地工具。", "展示完整轨迹、时间线或回放控制，最后落在可见的完整流程。", at(62), float(target_seconds), _slot("close-screen", "完整轨迹与回放录屏", "screen", "录制最终答案、事件时间线或回放按钮，并以完整流程图收尾。", at(28))),
     ]
-    return ContentTask(task_id=f"content-{uuid.uuid4().hex[:10]}", title=title, audience=audience, platform=platform, target_seconds=target_seconds, voiceover_asset=_slot("voiceover", "完整旁白音频", "audio", "录制完整旁白，可分段录制。保留 0.5 秒前后空白；不要混入背景音乐。", target_seconds), beats=beats, created_at=now, updated_at=now)
+    directives = [
+        RenderDirective(id="card-intro", type="card.show", start_seconds=0, end_seconds=min(3, beats[0].end_seconds), text=title),
+        *(RenderDirective(id=f"fade-{beat.id}", type="transition.fade", beat_id=beat.id, fade_seconds=0.25) for beat in beats),
+        RenderDirective(id="highlight-decision", type="highlight.rect", beat_id="decision", start_seconds=beats[3].start_seconds, end_seconds=min(beats[3].start_seconds + 5, beats[3].end_seconds), text="工具选择与参数", x=0.3, y=0.25, width=0.42, height=0.28),
+    ]
+    return ContentTask(task_id=f"content-{uuid.uuid4().hex[:10]}", title=title, audience=audience, platform=platform, target_seconds=target_seconds, voiceover_asset=_slot("voiceover", "完整旁白音频", "audio", "录制完整旁白，可分段录制。保留 0.5 秒前后空白；不要混入背景音乐。", target_seconds), beats=beats, render_directives=directives, created_at=now, updated_at=now)
 
 
 def all_slots(task: ContentTask) -> list[ContentAssetSlot]:

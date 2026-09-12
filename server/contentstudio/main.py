@@ -106,7 +106,7 @@ def get_task(task_id: str) -> ContentTask:
 @app.put("/api/v1/content/tasks/{task_id}")
 def update_task(task_id: str, request: UpdateContentTaskRequest) -> ContentTask:
     current = require_task(task_id)
-    task = ContentTask(task_id=task_id, title=request.title.strip(), audience=request.audience.strip(), platform=request.platform, target_seconds=request.target_seconds, status=current.status, voiceover_asset=request.voiceover_asset, beats=request.beats, created_at=current.created_at, updated_at=current.updated_at)
+    task = ContentTask(task_id=task_id, title=request.title.strip(), audience=request.audience.strip(), platform=request.platform, target_seconds=request.target_seconds, status=current.status, voiceover_asset=request.voiceover_asset, beats=request.beats, render_directives=request.render_directives, created_at=current.created_at, updated_at=current.updated_at)
     refresh_task_status(task)
     store.save(task)
     return task
