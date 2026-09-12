@@ -41,6 +41,7 @@ def draft_content_task(title: str, audience: str, platform: str, target_seconds:
     directives = [
         RenderDirective(id="card-intro", type="card.show", start_seconds=0, end_seconds=min(3, beats[0].end_seconds), text=title),
         *(RenderDirective(id=f"fade-{beat.id}", type="transition.fade", beat_id=beat.id, fade_seconds=0.25) for beat in beats),
+        RenderDirective(id="focus-decision", type="focus.zoom", beat_id="decision", start_seconds=beats[3].start_seconds, end_seconds=min(beats[3].start_seconds + 5, beats[3].end_seconds), x=0.24, y=0.2, width=0.52, height=0.4),
         RenderDirective(id="highlight-decision", type="highlight.rect", beat_id="decision", start_seconds=beats[3].start_seconds, end_seconds=min(beats[3].start_seconds + 5, beats[3].end_seconds), text="工具选择与参数", x=0.3, y=0.25, width=0.42, height=0.28),
     ]
     return ContentTask(task_id=f"content-{uuid.uuid4().hex[:10]}", title=title, audience=audience, platform=platform, target_seconds=target_seconds, voiceover_asset=_slot("voiceover", "完整旁白音频", "audio", "录制完整旁白，可分段录制。保留 0.5 秒前后空白；不要混入背景音乐。", target_seconds), beats=beats, render_directives=directives, created_at=now, updated_at=now)

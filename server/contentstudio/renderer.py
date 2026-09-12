@@ -141,6 +141,17 @@ def render_rough_cut(
         )
         current_label = next_label
         effect_index += 1
+    for directive in _enabled_directives(task, "focus.zoom"):
+        if directive.end_seconds <= directive.start_seconds:
+            continue
+        base_label, source_label, zoom_label, next_label = (f"focusbase{effect_index}", f"focussource{effect_index}", f"focuszoom{effect_index}", f"effect{effect_index}")
+        filters.extend([
+            f"[{current_label}]split=2[{base_label}][{source_label}]",
+            f"[{source_label}]crop=iw*{directive.width}:ih*{directive.height}:iw*{directive.x}:ih*{directive.y},scale={width}:{height}[{zoom_label}]",
+            f"[{base_label}][{zoom_label}]overlay=0:0:enable='between(t,{directive.start_seconds},{directive.end_seconds})'[{next_label}]",
+        ])
+        current_label = next_label
+        effect_index += 1
     for directive in _enabled_directives(task, "highlight.rect"):
         if directive.end_seconds <= directive.start_seconds:
             continue

@@ -10,7 +10,7 @@ AssetStatus = Literal["ready", "missing", "uploaded"]
 TaskStatus = Literal["prepare_assets", "ready_for_assembly", "rough_cut_ready"]
 RenderProfile = Literal["preview_720p", "publish_1080p", "vertical_1080p"]
 RenderJobStatus = Literal["queued", "rendering", "completed", "failed", "cancelled"]
-RenderDirectiveType = Literal["card.show", "transition.fade", "highlight.rect"]
+RenderDirectiveType = Literal["card.show", "transition.fade", "focus.zoom", "highlight.rect"]
 
 
 class ContentAssetSlot(BaseModel):
