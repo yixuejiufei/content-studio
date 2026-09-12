@@ -30,12 +30,25 @@ npm run dev
 
 前端开发服务器为 `/api` 代理到 `http://127.0.0.1:8010`。数据默认保存在 `server/content-studio.db`，素材默认保存在 `server/content-media`；可通过 `CONTENT_STUDIO_DB_PATH` 和 `CONTENT_STUDIO_MEDIA_DIR` 改写。
 
+### 可选：本地旁白识别
+
+字幕默认按分镜台词时间生成。若要按真实旁白自动对齐，在本机准备已下载的 `faster-whisper` 模型目录后再启动后端：
+
+```powershell
+cd server
+python -m pip install -e ".[dev,local-transcription]"
+$env:CONTENT_STUDIO_WHISPER_MODEL_PATH = "D:\models\faster-whisper-small"
+uvicorn contentstudio.main:app --reload --port 8010
+```
+
+页面中的“识别真实旁白”只读取本地音频和该目录中的模型；不会上传音频，也不会替你下载模型。CPU/INT8 模式适合没有显卡的电脑，模型越小速度越快、识别准确度通常越低。
+
 ## 当前边界
 
 - 本地、离线的创作规划工具；不需要线上大模型。
 - 创建时生成可编辑的起步台词和画面任务，适合「为了弄懂 Agent，我决定把 Agent 的每一步都展示出来」这一系列。
 - 用户需要提供完整旁白与各段录屏；必需素材齐全后可生成 1080p H.264/AAC MP4 和同名 SRT 字幕文件。
-- 已支持文字卡、淡入淡出、局部放大、高亮框与旁白压低 BGM；目前不处理智能镜头选取、敏感信息遮挡和字幕逐词高亮。这些能力将在 [下一阶段计划](docs/NEXT_STAGE_PLAN.md) 中按可编辑、可追溯的渲染指令逐步实现。
+- 已支持文字卡、淡入淡出、局部放大、高亮框、旁白压低 BGM，以及可选的本地句级字幕对齐；目前不处理智能镜头选取、敏感信息遮挡和字幕逐词高亮。这些能力将在 [下一阶段计划](docs/NEXT_STAGE_PLAN.md) 中按可编辑、可追溯的渲染指令逐步实现。
 
 ## 致谢
 

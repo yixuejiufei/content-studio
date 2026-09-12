@@ -43,12 +43,18 @@ def _srt_time(seconds: float) -> str:
     return f"{hours:02}:{minutes:02}:{whole_seconds:02},{milliseconds:03}"
 
 
-def _write_subtitles(task: ContentTask, output_path: Path) -> None:
+def _write_subtitles(task: ContentTask, output_path: Path) -> str:
     lines: list[str] = []
-    for index, beat in enumerate(task.beats, start=1):
-        text = beat.voiceover.replace("\r", " ").replace("\n", " ").strip()
-        lines.extend([str(index), f"{_srt_time(beat.start_seconds)} --> {_srt_time(beat.end_seconds)}", text, ""])
+    if task.subtitle_alignment:
+        for index, segment in enumerate(task.subtitle_alignment.segments, start=1):
+            text = segment.text.replace("\r", " ").replace("\n", " ").strip()
+            lines.extend([str(index), f"{_srt_time(segment.start_seconds)} --> {_srt_time(segment.end_seconds)}", text, ""])
+    else:
+        for index, beat in enumerate(task.beats, start=1):
+            text = beat.voiceover.replace("\r", " ").replace("\n", " ").strip()
+            lines.extend([str(index), f"{_srt_time(beat.start_seconds)} --> {_srt_time(beat.end_seconds)}", text, ""])
     output_path.write_text("\n".join(lines), encoding="utf-8")
+    return task.subtitle_alignment.source if task.subtitle_alignment else "script"
 
 
 def _filter_path(path: Path) -> str:
@@ -92,7 +98,7 @@ def render_rough_cut(
     token = uuid.uuid4().hex[:8]
     output = task_directory / f"rough-cut-{token}.mp4"
     subtitles = task_directory / f"rough-cut-{token}.srt"
-    _write_subtitles(task, subtitles)
+    subtitle_source = _write_subtitles(task, subtitles)
 
     command = [imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-y"]
     visual_filters: list[str] = []
@@ -228,5 +234,5 @@ def render_rough_cut(
         on_progress(100)
     return ContentVideoExport(
         generated_at=time.time(), file_name=output.name, stored_path=str(output),
-        subtitle_file_name=subtitles.name, duration_seconds=float(task.target_seconds), size_bytes=output.stat().st_size, profile=profile,
+        subtitle_file_name=subtitles.name, duration_seconds=float(task.target_seconds), size_bytes=output.stat().st_size, profile=profile, subtitle_source=subtitle_source,
     )

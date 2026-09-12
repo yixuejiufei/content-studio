@@ -11,6 +11,7 @@ TaskStatus = Literal["prepare_assets", "ready_for_assembly", "rough_cut_ready"]
 RenderProfile = Literal["preview_720p", "publish_1080p", "vertical_1080p"]
 RenderJobStatus = Literal["queued", "rendering", "completed", "failed", "cancelled"]
 RenderDirectiveType = Literal["card.show", "transition.fade", "focus.zoom", "highlight.rect", "audio.duck"]
+SubtitleSource = Literal["script", "local_whisper"]
 
 
 class ContentAssetSlot(BaseModel):
@@ -63,6 +64,22 @@ class ContentVideoExport(BaseModel):
     duration_seconds: float = Field(gt=0)
     size_bytes: int = Field(ge=0)
     profile: RenderProfile = "publish_1080p"
+    subtitle_source: SubtitleSource = "script"
+
+
+class SubtitleSegment(BaseModel):
+    id: str = Field(min_length=1, max_length=96)
+    start_seconds: float = Field(ge=0, le=3600)
+    end_seconds: float = Field(gt=0, le=3600)
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class SubtitleAlignment(BaseModel):
+    source: SubtitleSource
+    language: str = Field(default="zh", min_length=2, max_length=16)
+    model_name: str | None = Field(default=None, max_length=160)
+    segments: list[SubtitleSegment] = Field(min_length=1, max_length=5000)
+    generated_at: float
 
 
 class RenderDirective(BaseModel):
@@ -100,6 +117,10 @@ class CreateRenderJobRequest(BaseModel):
     profile: RenderProfile = "publish_1080p"
 
 
+class CreateSubtitleAlignmentRequest(BaseModel):
+    language: str = Field(default="zh", min_length=2, max_length=16)
+
+
 class ContentTask(BaseModel):
     task_id: str = Field(min_length=1, max_length=96)
     title: str = Field(min_length=1, max_length=160)
@@ -109,6 +130,7 @@ class ContentTask(BaseModel):
     status: TaskStatus = "prepare_assets"
     voiceover_asset: ContentAssetSlot
     music_asset: ContentAssetSlot | None = None
+    subtitle_alignment: SubtitleAlignment | None = None
     beats: list[ContentBeat] = Field(min_length=1, max_length=32)
     render_directives: list[RenderDirective] = Field(default_factory=list, max_length=96)
     rough_cut: ContentRoughCut | None = None
@@ -131,5 +153,6 @@ class UpdateContentTaskRequest(BaseModel):
     target_seconds: int = Field(ge=15, le=900)
     voiceover_asset: ContentAssetSlot
     music_asset: ContentAssetSlot | None = None
+    subtitle_alignment: SubtitleAlignment | None = None
     beats: list[ContentBeat] = Field(min_length=1, max_length=32)
     render_directives: list[RenderDirective] = Field(default_factory=list, max_length=96)

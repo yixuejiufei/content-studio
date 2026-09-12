@@ -34,6 +34,18 @@ def test_short_task_timeline_scales_to_requested_duration() -> None:
     assert all(beat["end_seconds"] > beat["start_seconds"] for beat in beats)
 
 
+def test_local_subtitle_alignment_explains_missing_model_setup(monkeypatch) -> None:
+    monkeypatch.delenv("CONTENT_STUDIO_WHISPER_MODEL_PATH", raising=False)
+    client = TestClient(app)
+    created = client.post("/api/v1/content/tasks", json={"title": "本地字幕测试", "audience": "测试观众", "target_seconds": 15})
+    task = created.json()
+    upload = client.post(f"/api/v1/content/tasks/{task['task_id']}/assets/{task['voiceover_asset']['id']}", content=b"demo audio", headers={"content-type": "audio/wav", "x-file-name": "voice.wav"})
+    assert upload.status_code == 200, upload.text
+    response = client.post(f"/api/v1/content/tasks/{task['task_id']}/subtitle-alignment", json={"language": "zh"})
+    assert response.status_code == 409
+    assert "CONTENT_STUDIO_WHISPER_MODEL_PATH" in response.json()["detail"]
+
+
 def test_export_generates_a_downloadable_mp4(tmp_path: Path) -> None:
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     screen = tmp_path / "screen.mp4"
@@ -52,6 +64,10 @@ def test_export_generates_a_downloadable_mp4(tmp_path: Path) -> None:
     music = task["music_asset"]
     upload = client.post(f"/api/v1/content/tasks/{task['task_id']}/assets/{music['id']}", content=voice.read_bytes(), headers={"content-type": "audio/wav", "x-file-name": "background.wav"})
     assert upload.status_code == 200, upload.text
+    task = upload.json()
+    task["subtitle_alignment"] = {"source": "local_whisper", "language": "zh", "model_name": "test-model", "generated_at": time.time(), "segments": [{"id": "subtitle-0001", "start_seconds": 0.2, "end_seconds": 1.4, "text": "这是按真实旁白保存的字幕。"}]}
+    saved = client.put(f"/api/v1/content/tasks/{task['task_id']}", json=task)
+    assert saved.status_code == 200, saved.text
     created_job = client.post(f"/api/v1/content/tasks/{task['task_id']}/render-jobs", json={"profile": "preview_720p"})
     assert created_job.status_code == 202, created_job.text
     job = created_job.json()
@@ -64,6 +80,13 @@ def test_export_generates_a_downloadable_mp4(tmp_path: Path) -> None:
     assert job["status"] == "completed", job.get("error")
     assert job["progress_percent"] == 100
     assert job["output"]["file_name"].endswith(".mp4")
+    assert job["output"]["subtitle_source"] == "local_whisper"
+    subtitle_path = Path(job["output"]["stored_path"]).with_suffix(".srt")
+    assert "这是按真实旁白保存的字幕。" in subtitle_path.read_text(encoding="utf-8")
     downloaded = client.get(f"/api/v1/content/render-jobs/{job['job_id']}/download")
     assert downloaded.status_code == 200
     assert downloaded.content[4:8] == b"ftyp"
+    preview = client.get(f"/api/v1/content/render-jobs/{job['job_id']}/preview")
+    assert preview.status_code == 200
+    assert preview.content[4:8] == b"ftyp"
+    assert "attachment" not in preview.headers.get("content-disposition", "")

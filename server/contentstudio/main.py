@@ -14,8 +14,9 @@ from fastapi.responses import FileResponse
 
 from .planner import attach_asset, build_rough_cut, draft_content_task, refresh_task_status
 from .renderer import RenderCancelled, render_rough_cut
-from .schemas import ContentTask, CreateContentTaskRequest, CreateRenderJobRequest, RenderJob, UpdateContentTaskRequest
+from .schemas import ContentTask, CreateContentTaskRequest, CreateRenderJobRequest, CreateSubtitleAlignmentRequest, RenderJob, UpdateContentTaskRequest
 from .storage import SQLiteStore
+from .transcription import LocalTranscriptionUnavailable, align_voiceover
 
 app = FastAPI(title="Content Studio")
 app.add_middleware(CORSMiddleware, allow_origins=["http://127.0.0.1:5174", "http://localhost:5174"], allow_methods=["*"], allow_headers=["*"])
@@ -106,7 +107,7 @@ def get_task(task_id: str) -> ContentTask:
 @app.put("/api/v1/content/tasks/{task_id}")
 def update_task(task_id: str, request: UpdateContentTaskRequest) -> ContentTask:
     current = require_task(task_id)
-    task = ContentTask(task_id=task_id, title=request.title.strip(), audience=request.audience.strip(), platform=request.platform, target_seconds=request.target_seconds, status=current.status, voiceover_asset=request.voiceover_asset, music_asset=request.music_asset, beats=request.beats, render_directives=request.render_directives, created_at=current.created_at, updated_at=current.updated_at)
+    task = ContentTask(task_id=task_id, title=request.title.strip(), audience=request.audience.strip(), platform=request.platform, target_seconds=request.target_seconds, status=current.status, voiceover_asset=request.voiceover_asset, music_asset=request.music_asset, subtitle_alignment=request.subtitle_alignment, beats=request.beats, render_directives=request.render_directives, created_at=current.created_at, updated_at=current.updated_at)
     refresh_task_status(task)
     store.save(task)
     return task
@@ -132,6 +133,26 @@ async def upload_asset(task_id: str, slot_id: str, request: Request) -> ContentT
         raise HTTPException(status_code=404, detail="content asset slot not found") from None
     task.rough_cut = None
     task.video_export = None
+    if slot_id == "voiceover":
+        task.subtitle_alignment = None
+    store.save(task)
+    return task
+
+
+@app.post("/api/v1/content/tasks/{task_id}/subtitle-alignment")
+def create_subtitle_alignment(task_id: str, request: CreateSubtitleAlignmentRequest) -> ContentTask:
+    task = require_task(task_id)
+    if not task.voiceover_asset.stored_path:
+        raise HTTPException(status_code=409, detail="请先上传完整旁白音频")
+    try:
+        task.subtitle_alignment = align_voiceover(Path(task.voiceover_asset.stored_path), request.language)
+    except LocalTranscriptionUnavailable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    task.video_export = None
+    task.rough_cut = None
+    refresh_task_status(task)
     store.save(task)
     return task
 
@@ -228,6 +249,17 @@ def download_render_job(job_id: str) -> FileResponse:
     if media_root.resolve() not in path.parents or not path.is_file():
         raise HTTPException(status_code=404, detail="视频导出文件不存在")
     return FileResponse(path, media_type="video/mp4", filename=job.output.file_name)
+
+
+@app.get("/api/v1/content/render-jobs/{job_id}/preview")
+def preview_render_job(job_id: str) -> FileResponse:
+    job = require_render_job(job_id)
+    if job.status != "completed" or job.output is None:
+        raise HTTPException(status_code=409, detail="视频尚未导出完成")
+    path = Path(job.output.stored_path).resolve()
+    if media_root.resolve() not in path.parents or not path.is_file():
+        raise HTTPException(status_code=404, detail="视频导出文件不存在")
+    return FileResponse(path, media_type="video/mp4")
 
 
 @app.get("/api/v1/content/tasks/{task_id}/export")
