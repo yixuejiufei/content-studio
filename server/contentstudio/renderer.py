@@ -184,6 +184,28 @@ def render_rough_cut(
         )
         current_label = next_label
         effect_index += 1
+    for directive in _enabled_directives(task, "privacy.mask"):
+        if directive.end_seconds <= directive.start_seconds:
+            continue
+        next_label = f"effect{effect_index}"
+        if directive.mask_mode == "solid":
+            filters.append(
+                f"[{current_label}]drawbox=x=iw*{directive.x}:y=ih*{directive.y}:w=iw*{directive.width}:h=ih*{directive.height}:"
+                f"color={_color_for_ffmpeg(directive.color)}:t=fill:enable='between(t,{directive.start_seconds},{directive.end_seconds})'[{next_label}]"
+            )
+        else:
+            base_label, source_label, mask_label = (f"maskbase{effect_index}", f"masksource{effect_index}", f"mask{effect_index}")
+            if directive.mask_mode == "pixelate":
+                mask_filter = r"scale=max(1\,trunc(iw/18)):max(1\,trunc(ih/18)):flags=neighbor,scale=iw*18:ih*18:flags=neighbor"
+            else:
+                mask_filter = "boxblur=4:1"
+            filters.extend([
+                f"[{current_label}]split=2[{base_label}][{source_label}]",
+                f"[{source_label}]crop=iw*{directive.width}:ih*{directive.height}:iw*{directive.x}:ih*{directive.y},{mask_filter}[{mask_label}]",
+                f"[{base_label}][{mask_label}]overlay=W*{directive.x}:H*{directive.y}:enable='between(t,{directive.start_seconds},{directive.end_seconds})'[{next_label}]",
+            ])
+        current_label = next_label
+        effect_index += 1
     filters = ";".join(filters)
     command.extend([
         "-filter_complex", filters,

@@ -10,7 +10,8 @@ AssetStatus = Literal["ready", "missing", "uploaded"]
 TaskStatus = Literal["prepare_assets", "ready_for_assembly", "rough_cut_ready"]
 RenderProfile = Literal["preview_720p", "publish_1080p", "vertical_1080p"]
 RenderJobStatus = Literal["queued", "rendering", "completed", "failed", "cancelled"]
-RenderDirectiveType = Literal["card.show", "transition.fade", "focus.zoom", "highlight.rect", "audio.duck"]
+RenderDirectiveType = Literal["card.show", "transition.fade", "focus.zoom", "highlight.rect", "audio.duck", "privacy.mask"]
+PrivacyMaskMode = Literal["blur", "pixelate", "solid"]
 SubtitleSource = Literal["script", "local_whisper"]
 
 
@@ -97,6 +98,7 @@ class RenderDirective(BaseModel):
     height: float = Field(default=0.3, gt=0, le=1)
     fade_seconds: float = Field(default=0.25, ge=0.05, le=2)
     volume: float = Field(default=0.18, ge=0, le=1)
+    mask_mode: PrivacyMaskMode = "blur"
 
 
 class RenderJob(BaseModel):

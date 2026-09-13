@@ -3,7 +3,7 @@ import { alignSubtitles, assetDownloadUrl, cancelRenderJob, createRenderJob, cre
 
 const platforms: [Platform, string][] = [['douyin', '抖音'], ['xiaohongshu', '小红书'], ['bilibili', 'B 站'], ['video_account', '视频号']];
 const profiles: [RenderProfile, string][] = [['preview_720p', '预览 720p（更快）'], ['publish_1080p', '发布 1080p'], ['vertical_1080p', '竖屏 1080×1920']];
-const names: Record<RenderDirective['type'], string> = {'card.show': '标题卡', 'transition.fade': '淡入淡出', 'focus.zoom': '局部放大', 'highlight.rect': '高亮框', 'audio.duck': '旁白压低 BGM'};
+const names: Record<RenderDirective['type'], string> = {'card.show': '标题卡', 'transition.fade': '淡入淡出', 'focus.zoom': '局部放大', 'highlight.rect': '高亮框', 'audio.duck': '旁白压低 BGM', 'privacy.mask': '隐私遮挡'};
 const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 
 function AssetRow({ task, asset, onTask }: { task: Task; asset: Asset; onTask: (task: Task) => void }) {
@@ -41,8 +41,8 @@ function RegionEditor({ task, directive, patch }: { task: Task; directive: Rende
   };
   const end = (event: React.PointerEvent<HTMLDivElement>) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); setDrag(null); };
   if (!asset || !source) return <p className="region-empty">先上传“{beat?.title || '对应分镜'}”的录屏，才可在画面上框选。</p>;
-  const label = directive.type === 'focus.zoom' ? '放大区域' : directive.text || '高亮区域';
-  return <div className="region-editor"><div className="row"><strong>画面区域</strong><a href={source} target="_blank" rel="noreferrer">新窗口播放原素材</a></div><p className="region-help">空白处拖拽可重新框选；拖动已有框可移动。黄色区域会被渲染。</p><div className="region-stage" onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end}><video src={source} muted playsInline preload="metadata"/><div className={`region-box ${directive.type === 'focus.zoom' ? 'zoom' : ''}`} style={{left: `${directive.x * 100}%`, top: `${directive.y * 100}%`, width: `${directive.width * 100}%`, height: `${directive.height * 100}%`}}><span>{label}</span></div></div></div>;
+  const label = directive.type === 'focus.zoom' ? '放大区域' : directive.type === 'privacy.mask' ? '遮挡区域' : directive.text || '高亮区域';
+  return <div className="region-editor"><div className="row"><strong>画面区域</strong><a href={source} target="_blank" rel="noreferrer">新窗口播放原素材</a></div><p className="region-help">空白处拖拽可重新框选；拖动已有框可移动。遮挡仅在指定时间导出，不会自动猜测敏感信息。</p><div className="region-stage" onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end}><video src={source} muted playsInline preload="metadata"/><div className={`region-box ${directive.type === 'focus.zoom' ? 'zoom' : directive.type === 'privacy.mask' ? 'privacy' : ''}`} style={{left: `${directive.x * 100}%`, top: `${directive.y * 100}%`, width: `${directive.width * 100}%`, height: `${directive.height * 100}%`}}><span>{label}</span></div></div></div>;
 }
 
 function SubtitlePanel({ task }: { task: Task }) {
@@ -64,9 +64,32 @@ function SubtitlePanel({ task }: { task: Task }) {
   return <div><div className="row"><h2>字幕与旁白对齐</h2>{voiceReady && <button onClick={align} disabled={busy}>{busy ? '正在本地识别…' : '识别真实旁白'}</button>}</div>{!voiceReady && <p>先上传完整旁白音频；当前导出会按分镜台词时间生成基础字幕。</p>}{voiceReady && !alignment && <p>识别使用你配置在本机的 faster-whisper 模型，不上传音频、不使用线上 API。识别后仍可逐句人工修改。</p>}{error && <p className="error-text">{error}</p>}{alignment && <><p>当前使用：本地转写 · {alignment.model_name || '本地模型'} · {alignment.segments.length} 句。修改后点击页面顶部“保存所有修改”。</p><div className="subtitle-segments">{alignment.segments.map(segment => <div className="subtitle-segment" key={segment.id}><span className="numbers"><input aria-label="字幕开始秒数" type="number" min="0" step=".1" value={segment.start_seconds} onChange={event => patchSegment(segment.id, {start_seconds: Number(event.target.value)})}/>至<input aria-label="字幕结束秒数" type="number" min="0" step=".1" value={segment.end_seconds} onChange={event => patchSegment(segment.id, {end_seconds: Number(event.target.value)})}/></span><textarea aria-label="字幕文案" value={segment.text} onChange={event => patchSegment(segment.id, {text: event.target.value})}/></div>)}</div></>}</div>;
 }
 
+function PrivacyMaskPanel({ task }: { task: Task }) {
+  const [mask, setMask] = useState(task.render_directives.find(item => item.type === 'privacy.mask'));
+  const [busy, setBusy] = useState(false), [message, setMessage] = useState('');
+  useEffect(() => setMask(task.render_directives.find(item => item.type === 'privacy.mask')), [task.task_id]);
+  const add = () => {
+    const beat = task.beats.find(item => item.id === 'decision') || task.beats[0];
+    const next: RenderDirective = {id: `privacy-${Date.now()}`, type: 'privacy.mask', enabled: true, beat_id: beat.id, start_seconds: beat.start_seconds, end_seconds: Math.min(beat.end_seconds, beat.start_seconds + 3), text: '手动遮挡区域', color: '#101827', x: .05, y: .05, width: .22, height: .1, fade_seconds: .25, volume: .18, mask_mode: 'blur'};
+    task.render_directives = [...task.render_directives, next]; setMask(next); setMessage('已新增遮挡区域；拖拽框选后保存。');
+  };
+  const patch = (update: Partial<RenderDirective>) => {
+    if (!mask) return;
+    const next = {...mask, ...update}; task.render_directives = task.render_directives.map(item => item.id === next.id ? next : item); setMask(next);
+  };
+  const persist = async () => {
+    setBusy(true); setMessage('');
+    try { const saved = await saveTask(task); Object.assign(task, saved); setMask(saved.render_directives.find(item => item.type === 'privacy.mask')); setMessage('遮挡规则已保存。'); }
+    catch (error) { setMessage(error instanceof Error ? error.message : '遮挡规则保存失败'); }
+    finally { setBusy(false); }
+  };
+  if (!mask) return <div className="privacy-panel"><div className="row"><h2>手动隐私遮挡</h2><button className="secondary" onClick={add}>新增遮挡区域</button></div><p>用于路径、账号、密钥或个人信息。系统不会自动判断或遮挡任何内容。</p></div>;
+  return <div className="privacy-panel"><div className="row"><h2>手动隐私遮挡</h2><span><button className="secondary" onClick={add}>再新增一个</button><button onClick={persist} disabled={busy}>{busy ? '保存中…' : '保存遮挡规则'}</button></span></div><p>只遮挡你明确框选的区域；导出前请预览确认覆盖范围。</p><label className="switch"><input type="checkbox" checked={mask.enabled} onChange={event => patch({enabled: event.target.checked})}/>启用此遮挡</label><label>遮挡方式<select value={mask.mask_mode || 'blur'} onChange={event => patch({mask_mode: event.target.value as 'blur' | 'pixelate' | 'solid'})}><option value="blur">模糊</option><option value="pixelate">马赛克</option><option value="solid">纯色覆盖</option></select></label><label>作用时间（秒）<span className="numbers"><input type="number" min="0" step=".1" value={mask.start_seconds} onChange={event => patch({start_seconds: Number(event.target.value)})}/>至<input type="number" min="0" step=".1" value={mask.end_seconds} onChange={event => patch({end_seconds: Number(event.target.value)})}/></span></label>{mask.mask_mode === 'solid' && <label>覆盖颜色<input type="color" value={mask.color} onChange={event => patch({color: event.target.value})}/></label>}<RegionEditor task={task} directive={mask} patch={patch}/>{message && <p className="privacy-message">{message}</p>}</div>;
+}
+
 function EffectTimeline({ task }: { task: Task }) {
   const visualEffects = task.render_directives.filter(item => item.type !== 'audio.duck' && item.end_seconds > item.start_seconds);
-  return <><SubtitlePanel task={task}/>{visualEffects.length > 0 && <div className="effect-timeline"><div className="timeline-labels"><span>0s</span><strong>效果时间轴</strong><span>{task.target_seconds}s</span></div>{visualEffects.map(item => <div className="timeline-track" key={item.id}><span>{names[item.type]}</span><div className="timeline-rail"><div className="timeline-block" style={{left: `${clamp(item.start_seconds / task.target_seconds) * 100}%`, width: `${clamp((item.end_seconds - item.start_seconds) / task.target_seconds) * 100}%`}}>{item.type === 'card.show' ? item.text : null}</div></div></div>)}</div>}</>;
+  return <><PrivacyMaskPanel task={task}/><SubtitlePanel task={task}/>{visualEffects.length > 0 && <div className="effect-timeline"><div className="timeline-labels"><span>0s</span><strong>效果时间轴</strong><span>{task.target_seconds}s</span></div>{visualEffects.map(item => <div className="timeline-track" key={item.id}><span>{names[item.type]}</span><div className="timeline-rail"><div className="timeline-block" style={{left: `${clamp(item.start_seconds / task.target_seconds) * 100}%`, width: `${clamp((item.end_seconds - item.start_seconds) / task.target_seconds) * 100}%`}}>{item.type === 'card.show' ? item.text : null}</div></div></div>)}</div>}</>;
 }
 
 function DirectiveEditor({ task, onChange }: { task: Task; onChange: (items: RenderDirective[]) => void }) {

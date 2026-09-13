@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 import imageio_ffmpeg
+import pytest
 
 from contentstudio.main import app
 
@@ -14,6 +15,9 @@ def test_content_task_requires_assets_then_generates_an_inspectable_rough_cut() 
     assert response.status_code == 201, response.text
     task = response.json()
     assert task["status"] == "prepare_assets"
+    privacy_mask = next(item for item in task["render_directives"] if item["type"] == "privacy.mask")
+    assert privacy_mask["enabled"] is False
+    assert privacy_mask["mask_mode"] == "blur"
     assert client.post(f"/api/v1/content/tasks/{task['task_id']}/rough-cut").status_code == 409
     for asset in [task["voiceover_asset"], *[beat["asset"] for beat in task["beats"]]]:
         if asset["required"]:
@@ -46,7 +50,8 @@ def test_local_subtitle_alignment_explains_missing_model_setup(monkeypatch) -> N
     assert "CONTENT_STUDIO_WHISPER_MODEL_PATH" in response.json()["detail"]
 
 
-def test_export_generates_a_downloadable_mp4(tmp_path: Path) -> None:
+@pytest.mark.parametrize("mask_mode", ["blur", "pixelate", "solid"])
+def test_export_generates_a_downloadable_mp4(tmp_path: Path, mask_mode: str) -> None:
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     screen = tmp_path / "screen.mp4"
     voice = tmp_path / "voice.wav"
@@ -66,6 +71,7 @@ def test_export_generates_a_downloadable_mp4(tmp_path: Path) -> None:
     assert upload.status_code == 200, upload.text
     task = upload.json()
     task["subtitle_alignment"] = {"source": "local_whisper", "language": "zh", "model_name": "test-model", "generated_at": time.time(), "segments": [{"id": "subtitle-0001", "start_seconds": 0.2, "end_seconds": 1.4, "text": "这是按真实旁白保存的字幕。"}]}
+    task["render_directives"].append({"id": "privacy-test", "type": "privacy.mask", "enabled": True, "beat_id": "decision", "start_seconds": 5.7, "end_seconds": 8.0, "text": "测试遮挡", "color": "#101827", "x": 0.1, "y": 0.1, "width": 0.25, "height": 0.15, "fade_seconds": 0.25, "volume": 0.18, "mask_mode": mask_mode})
     saved = client.put(f"/api/v1/content/tasks/{task['task_id']}", json=task)
     assert saved.status_code == 200, saved.text
     created_job = client.post(f"/api/v1/content/tasks/{task['task_id']}/render-jobs", json={"profile": "preview_720p"})
